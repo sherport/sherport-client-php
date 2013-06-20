@@ -8,6 +8,7 @@
  */
 class classSherport {
 	private $sherportUrl = 'sherport.mobi';
+	private $version = '0.9.21';
 	private $error;
 	private $token;
 	private $url;
@@ -68,6 +69,14 @@ class classSherport {
 	}
 
 	/**
+	 * gets the html code of a script-tag to embed the sherport javascript
+	 * @return string - the html-code
+	 */
+	public function getJsLibHtml() {
+		return '<script type="text/javascript" src="https://'.$this->sherportUrl.'/js/sherport-'.$this->version.'.js"></script>';
+	}
+
+	/**
 	 * Initialisiere eine Sherport-Login-Abfrage
 	 * @param integer $consumerId - Die von Sherport vergebene consumerId
 	 * @return boolean - Funktion erfolgreich ausgeführt
@@ -87,8 +96,8 @@ class classSherport {
 	 */
 	public function loginGetSnippet($urlSuccess, $text = null, $outerClass = null) {
 		$text = ($text === null)? 'Bitte scannen': htmlspecialchars($text);
-		return '<div id="sherport"'.(empty($outerClass)? '': ' class="'.$outerClass.'"').'><a href="'.$urlSuccess.'" id="sherport-code"><img id="qr-code" width="164" height="164" src="https/'.$this->sherportUrl.'/code?lt='.$this->token['token'].'" alt="Sherport-Login-Code" /></a>
-	<div id="sherport-status"><span class="js-disabled">Kein Javascript</span><span class="js-enabled">'.$text.' <img width="16" height="16" src="https//'.$this->sherportUrl.'/img/sherport-loader.gif" id="sherport-spinner" alt="" /></span></div>
+		return '<div id="sherport"'.(empty($outerClass)? '': ' class="'.$outerClass.'"').'><a href="'.$urlSuccess.'" id="sherport-code"><img id="qr-code" width="164" height="164" src="https://'.$this->sherportUrl.'/code?lt='.$this->token['token'].'" alt="Sherport-Login-Code" /></a>
+	<div id="sherport-status"><span class="js-disabled">Kein Javascript</span><span class="js-enabled">'.$text.' <img width="16" height="16" src="https://'.$this->sherportUrl.'/img/sherport-loader.gif" id="sherport-spinner" alt="" /></span></div>
 </div>';
 	}
 
@@ -407,6 +416,10 @@ class classSherport {
 				}
 			}
 			fclose($socket);
+		}
+		else {
+			$this->error = 'ERR_NO_SERVER_CONNECTION';
+			trigger_error("socket error! description=\"$errstr ($errno)\"");
 		}
 		if ($httpStatus === 200) {
 			return $out;
