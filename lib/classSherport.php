@@ -3,12 +3,12 @@
  * classSherport
  * Die Sherport-Klasse für die Anwendung auf der Seite mit dem Login oder dem Bezahlvorgang
  * @author Falk Berger
- * @copyright 2011,2013 Sherport
- * @version 0.9.21
+ * @copyright 2011,2014 Sherport
+ * @version 1.0.0
  */
 class classSherport {
-	private $sherportUrl = 'sherport.mobi';
-	private $version = '0.9.21';
+	private $sherportUrl = 'sherport.com/api';
+	private $version = '1.0.0';
 	private $error;
 	private $token;
 	private $url;
@@ -98,6 +98,7 @@ class classSherport {
 		$text = ($text === null)? 'Bitte scannen': htmlspecialchars($text);
 		return '<div id="sherport"'.(empty($outerClass)? '': ' class="'.$outerClass.'"').'><a href="'.$urlSuccess.'" id="sherport-code"><img id="qr-code" width="164" height="164" src="https://'.$this->sherportUrl.'/code?lt='.$this->token['token'].'" alt="Sherport-Login-Code" /></a>
 	<div id="sherport-status"><span class="js-disabled">Kein Javascript</span><span class="js-enabled">'.$text.' <img width="16" height="16" src="https://'.$this->sherportUrl.'/img/sherport-loader.gif" id="sherport-spinner" alt="" /></span></div>
+	<script type="text/javascript" src="https://'.$this->sherportUrl.'/js/sherport-'.$this->version.'.js"></script>
 </div>';
 	}
 
@@ -109,7 +110,7 @@ class classSherport {
 	 */
 	public function loginGetData($token) {
 		if ($token === $this->token['token']) {
-			if (($data = $this->sendHTTP('a=loginGetData', 's='.$this->token['secret'].'&c='.$this->token['consumerId'], 'POST', 'login_api')) !== FALSE) {
+			if (($data = $this->sendHTTP('a=loginGetData', 's='.$this->token['secret'].'&c='.$this->token['consumerId'], 'POST', 'login')) !== FALSE) {
 				$data = json_decode($data, true);
 				// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
 				if (!isset($data['status']) || $data['status'] !== 'error') {
@@ -146,7 +147,7 @@ class classSherport {
 			if ($options !== null) {
 				$postData['options'] = $options;
 			}
-			if (($data = $this->sendHTTP('a=paymentInit', 't='.$token['token'].'&c='.$consumerId.'&data='.urlencode(json_encode($postData)), 'POST', 'payment_api')) !== false) {
+			if (($data = $this->sendHTTP('a=paymentInit', 't='.$token['token'].'&c='.$consumerId.'&data='.urlencode(json_encode($postData)), 'POST', 'payment')) !== false) {
 				$data = json_decode($data, true);
 				// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
 				if (!isset($data['status']) || $data['status'] !== 'error') {
@@ -177,6 +178,7 @@ class classSherport {
 		$text = ($text === null)? 'Bitte scannen': htmlspecialchars($text);
 		return '<div id="sherport"'.(empty($outerClass)? '': ' class="'.$outerClass.'"').'><a href="'.$urlSuccess.'" id="sherport-code"><img id="qr-code" width="164" height="164" src="https://'.$this->sherportUrl.'/code?pt='.$this->token['token'].'" alt="Sherport-Login-Code" /></a>
 	<div id="sherport-status"><span class="js-disabled">Kein Javascript</span><span class="js-enabled">'.$text.' <img width="16" height="16" src="https://'.$this->sherportUrl.'/img/sherport-loader.gif" id="sherport-spinner" alt="" /></span></div>
+	<script type="text/javascript" src="https://'.$this->sherportUrl.'/js/sherport-'.$this->version.'.js"></script>
 </div>';
 	}
 
@@ -188,10 +190,10 @@ class classSherport {
 	 */
 	public function paymentGetData($token) {
 		if ($token === $this->token['token']) {
-			if (($data = $this->sendHTTP('a=paymentGetData', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment_api')) !== FALSE) {
+			if (($data = $this->sendHTTP('a=paymentGetData', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment')) !== FALSE) {
 				$data = json_decode($data, true);
 				// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
-				if (!isset($data['status']) || $data['status'] !== 'error') {
+				if (!isset($data['status']) || $data['status'] != 'error') {
 					return $data;
 				}
 				$error = reset($data['error']);
@@ -211,10 +213,10 @@ class classSherport {
 	 * @return Ambigous <boolean, string>
 	 */
 	public function paymentConfirm() {
-		if (($data = $this->sendHTTP('a=paymentConfirm', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment_api')) !== FALSE) {
+		if (($data = $this->sendHTTP('a=paymentConfirm', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment')) !== FALSE) {
 			$data = json_decode($data, true);
 			// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
-			if (!isset($data['status']) || $data['status'] !== 'error') {
+			if (!isset($data['status']) || $data['status'] != 'error') {
 				return true;
 			}
 			$error = reset($data['error']);
@@ -229,10 +231,10 @@ class classSherport {
 	 * @return Ambigous <boolean, string>
 	 */
 	public function paymentCancel() {
-		if (($data = $this->sendHTTP('a=paymentCancel', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment_api')) !== FALSE) {
+		if (($data = $this->sendHTTP('a=paymentCancel', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment')) !== FALSE) {
 			$data = json_decode($data, true);
 			// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
-			if (!isset($data['status']) || $data['status'] !== 'error') {
+			if (!isset($data['status']) || $data['status'] != 'error') {
 				return true;
 			}
 			$error = reset($data['error']);
@@ -376,16 +378,16 @@ class classSherport {
 		$chunked = false;
 
 		// HTTP Header generieren
-		$header = $methode.' /'.$script.(($getData)? '?'.$getData: '')." HTTP/1.1\r\n";
+		$header = $methode.' /api/'.$script.(($getData)? '?'.$getData: '')." HTTP/1.1\r\n";
 		$header.= "Host: {$this->sherportUrl}\r\n";
-		$header.= "User-Agent: Sherport-Consumer/0.9.21\r\n";
+		$header.= "User-Agent: Sherport-Consumer/{$this->version}\r\n";
 		$header.= 'Referer: '.$this->url."\r\n";
-		if ($methode === 'POST' && !empty($postData)) {
+		if ($methode == 'POST' && !empty($postData)) {
 			$header.= "Content-Type: application/x-www-form-urlencoded\r\n";
 			$header.= 'Content-Length: '.strlen($postData)."\r\n";
 		}
 		$header.= "Connection: close\r\n\r\n";
-		if ($methode === 'POST' && !empty($postData)) {
+		if ($methode == 'POST' && !empty($postData)) {
 			$header.= $postData."\r\n";
 		}
 
@@ -395,11 +397,11 @@ class classSherport {
 			while (!feof($socket)) {
 				$line = strtolower(fgets($socket));
 				if ($line === "\r\n") break;	// Ende Header
-				if (substr($line, 0, 8) === 'http/1.1') {
+				if (substr($line, 0, 8) == 'http/1.1') {
 					$httpStatus = (int) substr($line, 9, 3);
 				}
-				if (substr($line, 0, 18) === 'transfer-encoding:') {
-					if (trim(substr($line, 18)) === 'chunked') {
+				if (substr($line, 0, 18) == 'transfer-encoding:') {
+					if (trim(substr($line, 18)) == 'chunked') {
 						$chunked = true;
 					}
 				}
@@ -421,10 +423,11 @@ class classSherport {
 			$this->error = 'ERR_NO_SERVER_CONNECTION';
 			trigger_error("socket error! description=\"$errstr ($errno)\"");
 		}
-		if ($httpStatus === 200) {
+		if ($httpStatus == 200) {
 			return $out;
 		}
 		else {
+			$this->error = 'ERR_CONNECTION_ERROR';
 			return false;
 		}
 	}
