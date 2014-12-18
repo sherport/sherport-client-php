@@ -4,20 +4,23 @@
  * Die Sherport-Klasse für die Anwendung auf der Seite mit dem Login oder dem Bezahlvorgang
  * @author Falk Berger
  * @copyright 2011,2014 Sherport
- * @version 1.0.0
+ * @version 1.1.0
  */
 class classSherport {
-	private $sherportUrl = 'sherport.com/api';
-	private $version = '1.0.0';
+	private $sherportUrl = 'sherport.com';
+	private $sherportPort = 443;
+	private $apiUrl = 'https://sherport.com/api/';
+	private $version = '1.1.0';
 	private $error;
 	private $token;
 	private $url;
+	private $params = array();
 	private $invoice;
 	private $invoiceValidated;
 
 	/**
 	 * Constructor
-	 * @param string $url - Die Url der eigenen Webseite inkl. Schema. Sie wird als referer bei jedem Request an Sherport übertragen.
+	 * @param string $url - Die Url der eigenen Webseite inkl. Schema. Sie wird als Referer bei jedem Request an Sherport übertragen.
 	 *                       Wenn weggelassen, so wird der Servername aus dem $_SERVER-Array benutzt
 	 */
 	function __construct($url = null) {
@@ -38,7 +41,7 @@ class classSherport {
 
 	/**
 	 * Token-Storage
-	 * Der von den init-Funktionen generierte Token muß von der Webseite so lange gespeichert werden,
+	 * Der von den init-Funktionen generierte Token mu� von der Webseite so lange gespeichert werden,
 	 * bis der Vorgang abgeschlossen ist. Dazu bietet diese Klasse Funktionen zum export und import der
 	 * Tokeninformationen in verschiedenen Formaten an. Die Daten sollten in einer $_SESSION-Variablen oder
 	 * einer Datenbank zwischengespeichert werden.
@@ -69,20 +72,49 @@ class classSherport {
 	}
 
 	/**
+	 * Setze die gewünschte Größe des QR-Codes
+	 * Unterstützte Größen: 4 - 164x164px (default)
+	 *                      6 - 246x246px
+	 * @param integer $size - gewünschte Größe
+	 */
+	public function setQrSize($size) {
+		if ($size >= 6) {
+			$this->params['size'] = 6;
+		}
+		else {
+			unset($this->params['size']);
+		}
+	}
+
+	/**
 	 * gets the html code of a script-tag to embed the sherport javascript
 	 * @return string - the html-code
 	 */
 	public function getJsLibHtml() {
-		return '<script type="text/javascript" src="https://'.$this->sherportUrl.'/js/sherport-'.$this->version.'.js"></script>';
+		return '<script type="text/javascript" src="'.$this->apiUrl.'js/sherport-'.$this->version.'.js"></script>';
 	}
 
 	/**
 	 * Initialisiere eine Sherport-Login-Abfrage
 	 * @param integer $consumerId - Die von Sherport vergebene consumerId
+	 * @param array $fetchData - data to fetch from user (see manual)
 	 * @return boolean - Funktion erfolgreich ausgeführt
 	 */
-	public function loginInit($consumerId) {
+	public function loginInit($consumerId, $fetchData = null) {
 		$this->token = $this->createToken((int) $consumerId);
+		if ($fetchData) {
+			$postData = array('fetchData' => $fetchData);
+			// JSON_ESCAPE_SLASHES in json_encode wäre eigentlich möglich, ist aber erst seit php 5.4 vorhanden
+			if (($data = $this->sendHTTP('a=loginInit', 't='.$this->token['token'].'&c='.$consumerId.'&data='.urlencode(json_encode($postData)), 'POST', 'login')) !== false) {
+				// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
+				if (!isset($data['status']) || $data['status'] != 'error') {
+					return true;
+				}
+				var_dump($data);
+				$error = reset($data['error']);
+				$this->error = 'ERR_'.$error[0];
+			}
+		}
 		return true;
 	}
 
@@ -95,10 +127,10 @@ class classSherport {
 	 * @return string - Html-Code
 	 */
 	public function loginGetSnippet($urlSuccess, $text = null, $outerClass = null) {
-		$text = ($text === null)? 'Bitte scannen': htmlspecialchars($text);
-		return '<div id="sherport"'.(empty($outerClass)? '': ' class="'.$outerClass.'"').'><a href="'.$urlSuccess.'" id="sherport-code"><img id="qr-code" width="164" height="164" src="https://'.$this->sherportUrl.'/code?lt='.$this->token['token'].'" alt="Sherport-Login-Code" /></a>
-	<div id="sherport-status"><span class="js-disabled">Kein Javascript</span><span class="js-enabled">'.$text.' <img width="16" height="16" src="https://'.$this->sherportUrl.'/img/sherport-loader.gif" id="sherport-spinner" alt="" /></span></div>
-	<script type="text/javascript" src="https://'.$this->sherportUrl.'/js/sherport-'.$this->version.'.js"></script>
+		$text = ($text)? htmlspecialchars($text): 'Bitte scannen';
+		return '<div id="sherport"'.(empty($outerClass)? '': ' class="'.$outerClass.'"').'><a href="'.$urlSuccess.'" id="sherport-code"><img id="qr-code" width="164" height="164" src="'.$this->apiUrl.'code?lt='.$this->token['token'].$this->buildCodeParams().'" alt="Sherport-Login-Code" /></a>
+	<div id="sherport-status"><span class="js-disabled">Kein Javascript</span><span class="js-enabled">'.$text.' <img width="16" height="16" src="'.$this->apiUrl.'img/sherport-loader.gif" id="sherport-spinner" alt="" /></span></div>
+	'.$this->buildJS($urlSuccess).'<script type="text/javascript" src="'.$this->apiUrl.'js/sherport-'.$this->version.'.js"></script>
 </div>';
 	}
 
@@ -109,9 +141,8 @@ class classSherport {
 	 * @return bool/array	- False or the data in an array
 	 */
 	public function loginGetData($token) {
-		if ($token === $this->token['token']) {
+		if ($token == $this->token['token']) {
 			if (($data = $this->sendHTTP('a=loginGetData', 's='.$this->token['secret'].'&c='.$this->token['consumerId'], 'POST', 'login')) !== FALSE) {
-				$data = json_decode($data, true);
 				// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
 				if (!isset($data['status']) || $data['status'] !== 'error') {
 					return $data;
@@ -134,6 +165,8 @@ class classSherport {
 	 * @param array $invoice - invoice data. If null, data is taken from previous calls to invoice functions (addArticle)
 	 * @param array $options - various options for payment
 	 *    - doubleConfirm: if true, then sherport needs a second confirmation of payment order (default: false)
+	 *    - url: Auf diese Url wird der Shop (per Javascript) nach erfolgreicher Zahlung weitergeleitet (mit token angehängt)
+	 *    - notify: Url auf Server, welche von Sherport über Zahlungsstatus informiert wird
 	 * @return boolean - If successful, then return true
 	 */
 	public function paymentInit($consumerId, $fetchData = null, $invoice = null, $options = null) {
@@ -148,8 +181,7 @@ class classSherport {
 				$postData['options'] = $options;
 			}
 			if (($data = $this->sendHTTP('a=paymentInit', 't='.$token['token'].'&c='.$consumerId.'&data='.urlencode(json_encode($postData)), 'POST', 'payment')) !== false) {
-				$data = json_decode($data, true);
-				// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
+				// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zur�ck
 				if (!isset($data['status']) || $data['status'] !== 'error') {
 					$this->token = $data;
 					$this->token['consumerId'] = (int) $consumerId;
@@ -171,14 +203,14 @@ class classSherport {
 	 * @param string $loginURL - die Url, welche bei einem Klick auf den QR-Code aufgerufen werden soll.
 	 *                            Dies ist der gleiche Wert wie im Javascript-Config-Ojekt definiert
 	 * @param string $text - Text der unterhalb des QR-Codes angezeigt wird ("bitte scannen")
-	 * @param string $outerClass - Klassendefinition, welche dem außeren Div zugewiesen wird
+	 * @param string $outerClass - Klassendefinition, welche dem au�eren Div zugewiesen wird
 	 * @return string - Html-Code
 	 */
 	public function paymentGetSnippet($urlSuccess, $text = null, $outerClass = null) {
-		$text = ($text === null)? 'Bitte scannen': htmlspecialchars($text);
-		return '<div id="sherport"'.(empty($outerClass)? '': ' class="'.$outerClass.'"').'><a href="'.$urlSuccess.'" id="sherport-code"><img id="qr-code" width="164" height="164" src="https://'.$this->sherportUrl.'/code?pt='.$this->token['token'].'" alt="Sherport-Login-Code" /></a>
-	<div id="sherport-status"><span class="js-disabled">Kein Javascript</span><span class="js-enabled">'.$text.' <img width="16" height="16" src="https://'.$this->sherportUrl.'/img/sherport-loader.gif" id="sherport-spinner" alt="" /></span></div>
-	<script type="text/javascript" src="https://'.$this->sherportUrl.'/js/sherport-'.$this->version.'.js"></script>
+		$text = ($text)? htmlspecialchars($text): 'Bitte scannen';
+		return '<div id="sherport"'.(empty($outerClass)? '': ' class="'.$outerClass.'"').'><a href="'.$urlSuccess.'" id="sherport-code"><img id="qr-code" width="164" height="164" src="'.$this->apiUrl.'code?pt='.$this->token['token'].$this->buildCodeParams().'" alt="Sherport-Login-Code" /></a>
+	<div id="sherport-status"><span class="js-disabled">Kein Javascript</span><span class="js-enabled">'.$text.' <img width="16" height="16" src="'.$this->apiUrl.'img/sherport-loader.gif" id="sherport-spinner" alt="" /></span></div>
+	'.$this->buildJS($urlSuccess).'<script type="text/javascript" src="'.$this->apiUrl.'js/sherport-'.$this->version.'.js"></script>
 </div>';
 	}
 
@@ -188,10 +220,9 @@ class classSherport {
 	 * @param string $token	- the token as given in the qr-code
 	 * @return bool/array	- False or the data in an array
 	 */
-	public function paymentGetData($token) {
-		if ($token === $this->token['token']) {
+	public function paymentGetData($token = '') {
+		if ($token == '' || $token == $this->token['token']) {
 			if (($data = $this->sendHTTP('a=paymentGetData', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment')) !== FALSE) {
-				$data = json_decode($data, true);
 				// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
 				if (!isset($data['status']) || $data['status'] != 'error') {
 					return $data;
@@ -214,7 +245,6 @@ class classSherport {
 	 */
 	public function paymentConfirm() {
 		if (($data = $this->sendHTTP('a=paymentConfirm', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment')) !== FALSE) {
-			$data = json_decode($data, true);
 			// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
 			if (!isset($data['status']) || $data['status'] != 'error') {
 				return true;
@@ -227,12 +257,11 @@ class classSherport {
 
 	/**
 	 * Schliesse eine Zahlung ab.
-	 * Der Aufruf von dieser Funktion oder paymentConfirm ist bei einer doppelt-bestätigten Zahlung dringend erforderlich.
+	 * Der Aufruf von dieser Funktion oder paymentConfirm ist bei einer doppelt-best�tigten Zahlung dringend erforderlich.
 	 * @return Ambigous <boolean, string>
 	 */
 	public function paymentCancel() {
 		if (($data = $this->sendHTTP('a=paymentCancel', 's='.$this->token['secret'].'&c='.$this->token['consumerId'].'&auth='.$this->token['authToken'], 'POST', 'payment')) !== FALSE) {
-			$data = json_decode($data, true);
 			// So lange kein Fehler geliefert wurde, kehre hier mit den Daten zurück
 			if (!isset($data['status']) || $data['status'] != 'error') {
 				return true;
@@ -284,11 +313,31 @@ class classSherport {
 	}
 
 	/**
+	 * Füge einen Eintrag zu den Steuern der Rechnung hinzu.
+	 * Wenn einmal aufgerufen, dann wird die Stuer nicht bei validateInvoice berechnet
+	 * @param integer $netto - Nettobetrag in Cent (bei EUR)
+	 * @param integer $tax - Betrag der MwSt in Cent (bei EUR)
+	 * @param integer $percent - Prozentsatz in hunderstel
+	 */
+	public function addTax($netto, $tax, $percent) {
+		$this->invoice['tax'][$percent] = array('netto' => $netto, 'tax' => $tax);
+	}
+
+	/**
+	 * Setze die Währung der Zahlungsinformationen.
+	 * Hinweis: Wird die Funktion nicht aufgerufen, setzt validateInvoice die Währung automatisch auf EUR
+	 * @param string $currency - ISO-Code der Währung
+	 */
+	public function setCurrency($currency) {
+		$this->invoice['currency'] = $currency;
+	}
+
+	/**
 	 * Request a connect token from sherport
 	 * @param int $consumerId
 	 * @param array $connectData - Array of user data for sherport
 	 */
-	function initConnectToken($consumerId, $connectData) {
+	public function initConnectToken($consumerId, $connectData) {
 		$token = $this->getToken($consumerId);
 		$postData = array('consumerId' => (int) $consumerId, 't' => $token['token'], 'connect' => $connectData);
 		$data = $this->sendHTTP('', 'data='.urlencode(json_encode($postData)), 'POST', 'cn_start');
@@ -309,7 +358,7 @@ class classSherport {
 			if (!isset($this->invoice['currency'])) {
 				$this->invoice['currency'] = 'EUR';	// Default-Währung
 			}
-			// Rechne Einzalartikel zusammen
+			// Rechne Einzelartikel zusammen
 			$total = 0;
 			$bWithTax = false;
 			$taxSum = array();
@@ -326,7 +375,7 @@ class classSherport {
 				}
 			}
 			// Sobald ein Artikel mit Steuer ist, werden alle Artikel mit Steuer gerechnet
-			if ($bWithTax) {
+			if ($bWithTax && !isset($this->invoice['tax'])) {
 				foreach ($this->invoice['articles'] as $id => $data) {
 					if (isset($data['taxP'])) {
 						$tax = $data['taxP'];
@@ -372,6 +421,29 @@ class classSherport {
 		}
 	}
 
+	private function buildCodeParams() {
+		$out = '';
+		if (isset($this->params['size'])) {
+			$out.= '&s='.$this->params['size'];
+		}
+		return $out;
+	}
+
+	/**
+	 * Erstelle das HTML-Code für den Sherport-Code.
+	 */
+	private function buildJS($urlSuccess = '') {
+		$out = '<script type="application/javascript">var sherportConfig={token:"'.$this->token['token'].'"';
+		if ($urlSuccess != '') {
+			$out.= ',urlSuccess:"'.$urlSuccess.'"';
+		}
+		if (isset($this->params['size'])) {
+			$out.= ',qrSize:'.$this->params['size'];
+		}
+		// TODO: noCSS-Option
+		return $out."};</script>\n	";
+	}
+
 	private function sendHTTP($getData, $postData = '', $methode = 'GET', $script = 'fetch') {
 		$out = '';
 		$httpStatus = 0;
@@ -392,11 +464,11 @@ class classSherport {
 		}
 
 		// Connection öffnen
-		if ($socket = @fsockopen('ssl://'.$this->sherportUrl, 443, $errno, $errstr)) {
+		if ($socket = @fsockopen('ssl://'.$this->sherportUrl, $this->sherportPort, $errno, $errstr)) {
 			fputs($socket, $header); // Header senden
 			while (!feof($socket)) {
 				$line = strtolower(fgets($socket));
-				if ($line === "\r\n") break;	// Ende Header
+				if ($line == "\r\n") break;	// Ende Header
 				if (substr($line, 0, 8) == 'http/1.1') {
 					$httpStatus = (int) substr($line, 9, 3);
 				}
@@ -421,15 +493,18 @@ class classSherport {
 		}
 		else {
 			$this->error = 'ERR_NO_SERVER_CONNECTION';
-			trigger_error("socket error! description=\"$errstr ($errno)\"");
 		}
 		if ($httpStatus == 200) {
-			return $out;
+			// Funktion liefert bisher immer json, dekodiere deshalb dann gleich hier
+			if (($out = json_decode($out, true)) !== NULL) {
+				return $out;
+			}
+			$this->error = 'ERR_MALFORMED_JSON';
 		}
 		else {
 			$this->error = 'ERR_CONNECTION_ERROR';
-			return false;
 		}
+		return false;
 	}
 
 	private function createToken($consumerId) {
